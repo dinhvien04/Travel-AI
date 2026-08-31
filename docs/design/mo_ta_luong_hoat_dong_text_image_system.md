@@ -1,161 +1,292 @@
-# MÔ TẢ LUỒNG HOẠT ĐỘNG HỆ THỐNG TRAVEL AI ASSISTANT
+﻿# M? t? lu?ng ho?t ??ng h? th?ng Travel AI Assistant
 
-> **Tài liệu kỹ thuật Backend theo source code hiện tại**  
-> **Phạm vi**: Mô tả chi tiết luồng xử lý của endpoint `POST /api/chat` với ba nhánh: `text_only`, `image_only`, và `text_image` (`image_text`).
+T?i li?u k? thu?t backend theo code hi?n t?i
 
----
+Ph?m vi: m? t? lu?ng x? l? c?a endpoint POST /api/chat v?i ba h??ng text_only, image_only v? text_image. T?i li?u ch? d?a tr?n code backend hi?n c? trong apps/api, kh?ng m? t? th?m ch?c n?ng ch?a th?y trong code.
 
-## MỤC LỤC
-1. [Tổng quan kiến trúc xử lý Request](#1-tổng-quan-kiến-trúc-xử-lý-request)
-2. [Luồng `text_only`](#2-luồng-text_only)
-3. [Luồng `image_only`](#3-luồng-image_only)
-4. [Luồng `text_image` (`image_text`)](#4-luồng-text_image-image_text)
-5. [Ghi chú về phần chưa thấy rõ trong code](#5-ghi-chú-về-phần-chưa-thấy-rõ-trong-code)
 
----
+## M?c l?c
 
-## 1. TỔNG QUAN KIẾN TRÚC XỬ LÝ REQUEST
+- 1. T?ng quan ki?n tr?c x? l? request
 
-Backend được xây dựng bằng **NodeJS + Express (JavaScript thuần)**:
-- `src/server.js`: Khởi động Express app theo `appConfig.port` và `appConfig.apiPrefix`.
-- `src/app.js`: Khai báo trực tiếp endpoint `POST ${appConfig.apiPrefix}/chat` sử dụng middleware `multer.memoryStorage()` với `upload.single("image")`.
+- 2. text_only
 
-### 1.1. Luồng vào chung của `POST /api/chat`
-1. **Client** gửi `multipart/form-data` tới `POST /api/chat` với các field:
-   - `session_id`: ID phiên hội thoại.
-   - `message`: Câu hỏi văn bản (nếu có).
-   - `image`: File ảnh upload (nếu có).
-2. **`app.js`** dùng multer nạp ảnh vào bộ nhớ tạm `req.file` (không lưu file dài hạn trên disk).
-3. **`ChatController.handle`** (`src/controllers/chat.controller.js`) gọi `inputRouterService.route({ sessionId, message, image })`.
-4. **`InputRouterService`** (`src/services/inputRouter.service.js`) chuẩn hóa message bằng `trim()`, kiểm tra sự tồn tại của message và image, rồi phân loại `input_type`.
-5. Nếu không có cả message lẫn image, trả về `errorResponse` với mã lỗi `EMPTY_INPUT` (HTTP 400).
-6. Điều phối sang Pipeline tương ứng:
-   - `text_only` $\rightarrow$ `TextOnlyPipeline.run()`
-   - `image_only` $\rightarrow$ `ImageOnlyPipeline.run()`
-   - `image_text` $\rightarrow$ `ImageTextPipeline.run()`
+- 3. image_only
 
-| `input_type` | Điều kiện phân loại | Pipeline được gọi |
-| :--- | :--- | :--- |
-| **`text_only`** | Có `message` sau khi trim, không có `image` | `TextOnlyPipeline` (`src/pipelines/text-only.pipeline.js`) |
-| **`image_only`** | Có `image`, không có `message` | `ImageOnlyPipeline` (`src/pipelines/image-only.pipeline.js`) |
-| **`image_text`** | Có cả `message` và `image` | `ImageTextPipeline` (`src/pipelines/image-text.pipeline.js`) |
-| **`empty_input`** | Không có `message` và không có `image` | Không gọi pipeline, trả `EMPTY_INPUT` (HTTP 400) |
+- 4. text_image
 
-> **Lưu ý đặt tên**: Tài liệu sử dụng thuật ngữ `text_image` để mô tả tương ứng với mã nguồn backend hiện tại đang định danh là `image_text`.
+- 5. Ghi ch? v? ph?n ch?a th?y r? trong code
 
-### 1.2. Response Contract chung
-Mọi response trả về frontend đều tuân thủ cấu trúc chuẩn từ `src/utils/responseFormatter.js`:
-- `success`: `boolean`
-- `status`: `'ok'` | `'error'` | `'out_of_scope'` | `'need_clarification'` | `'low_confidence'`
-- `error_code`: Mã lỗi định danh (VD: `EMPTY_INPUT`, `LOW_CONFIDENCE_MATCH`, `LLM_CLASSIFICATION_ERROR`...)
-- `message`: Chuỗi thông báo
-- `data`: Payload chi tiết (`answer`, `location`, `images`, `retrieval`, `debug`...)
-- `suggested_questions`: Danh sách câu hỏi gợi ý
 
-### 1.3. Cấu hình Qdrant & Embedding Models
-| Nhóm | Tên trong code / Env | Giá trị / Cấu hình |
-| :--- | :--- | :--- |
-| **Location Collection** | `appConfig.qdrant.collections.location` | `location_info` |
-| **Image Collection** | `appConfig.qdrant.collections.image` | `image_collection` |
-| **Text Collection** | `appConfig.qdrant.collections.text` | `text_collection` |
-| **Vector văn bản** | `TEXT_VECTOR_NAME` | `text_vector` (1024-dim, BGE-M3) |
-| **Vector hình ảnh** | `IMAGE_VECTOR_NAME` | `image_vector` (768-dim, SigLIP) |
-| **Vector caption ảnh** | `CAPTION_VECTOR_NAME` | `caption_vector` (1024-dim, BGE-M3) |
-| **Text Embedding** | `BgeM3EmbeddingService` | `onnx-community/bge-m3-ONNX` (1024 dimensions) |
-| **Vision & SigLIP Text** | `ImageEmbeddingService`, `SiglipTextEmbeddingService` | `Xenova/siglip-base-patch16-384` (768 dimensions) |
-| **LLM Generator** | `GeminiClient` | Google Gemini API (Key Rotation qua `GEMINI_API_KEYS`) |
+## T?ng quan ki?n tr?c x? l? request
 
----
+Backend l? NodeJS + Express thu?n JavaScript. File src/server.js kh?i ??ng Express app theo appConfig.port v? appConfig.apiPrefix. File src/app.js khai b?o tr?c ti?p endpoint POST ${appConfig.apiPrefix}/chat b?ng multer.memoryStorage() v?i upload.single("image"). Trong code hi?n t?i kh?ng th?y file router ri?ng cho chat; route ???c g?n tr?c ti?p trong app.js.
 
-## 2. LUỒNG `text_only`
 
-Luồng xử lý khi người dùng chỉ nhập câu hỏi văn bản (`input_type = "text_only"`).
+### Lu?ng v?o chung c?a /api/chat:
 
-### Các bước xử lý chi tiết:
-1. `ChatController.handle` nhận `routeResult` và gọi `TextOnlyPipeline.run({ sessionId, message, inputType })`.
-2. `TextOnlyPipeline` xác thực `inputType === 'text_only'`.
-3. Lấy ngữ cảnh hội thoại qua `contextService.getContext(sessionId)`.
-4. `TextDomainGuard.check(message, context)`: Kiểm tra từ khóa ngoài phạm vi (`OUT_OF_DOMAIN_KEYWORDS`). Nếu ngoài phạm vi du lịch $\rightarrow$ trả `outOfScopeResponse` với mã `TEXT_NOT_TRAVEL_RELATED`.
-5. `TextUnderstandingService.understand({ message, context })`: Gọi Gemini LLM (`GeminiClient.generateJson`) trích xuất JSON theo schema:
-   - `rewrite_query`: Câu hỏi đã viết lại rõ nghĩa
-   - `need_docs`, `need_images`, `need_metadata`: Cờ truy xuất
-   - `location_id`, `location_name`: Địa điểm nhận diện
-   - `is_follow_up`: Có phải câu hỏi nối tiếp không
-   - `intent`: `overview` | `activity` | `image_search` | `metadata` | `location_lookup` | `unknown`
-6. `ReferenceResolver.resolve()`: Bổ sung `location_id` từ ngữ cảnh (nếu là câu hỏi tiếp nối hoặc tham chiếu ảnh trước đó).
-7. `RetrievalPlanner.plan()`: Lập kế hoạch truy xuất (`shouldSearchDocs`, `shouldSearchImages`, `shouldGetMetadata`, `topKDocs`, `topKImages`).
-8. **Truy xuất tài liệu** (nếu `shouldSearchDocs = true`):
-   - Tạo vector bằng `bgeM3EmbeddingService.embedText(rewrite_query)`.
-   - Tìm kiếm trong `text_collection` (`text_vector`), áp dụng filter `location_id` nếu có.
-9. **Truy xuất hình ảnh (Hybrid Search)** (nếu `shouldSearchImages = true`):
-   - Sinh vector SigLIP từ text qua `siglipTextEmbeddingService.embedText(rewrite_query)`.
-   - Thực hiện **Hybrid Image Search** trên `image_collection`:
-     - Nhánh 1: `image_vector` $\leftrightarrow$ SigLIP text vector (trọng số **0.3**).
-     - Nhánh 2: `caption_vector` $\leftrightarrow$ BGE-M3 text vector (trọng số **0.7**).
-   - Hợp nhất kết quả, tính điểm `final_score`, gắn URL S3 qua `s3Service.attachImageUrls()`.
-10. **Truy xuất Metadata** (nếu `shouldGetMetadata = true`): Lấy thông tin từ `location_info` qua `locationRepository.getLocationById()`.
-11. `FusionService.fuse()`: Tổng hợp `message`, `rewrite_query`, `docs`, `images`, `metadata` thành `fusedContext`.
-12. `AnswerGenerator.generate()`: Dùng Gemini sinh câu trả lời tiếng Việt từ Retrieval JSON (nghiêm cấm bịa đặt thông tin ngoài context).
-13. `contextService.updateOnSuccess()`: Cập nhật `old_input`, `old_rewrite_query`, `active_location_id`, `last_returned_images`...
-14. Trả về `okResponse(data)` (HTTP 200).
 
----
+## 1. Client g?i multipart/form-data t?i POST /api/chat. C?c field ch?nh g?m session_id, message v? image.
 
-## 3. LUỒNG `image_only`
 
-Luồng xử lý khi người dùng tải lên một hình ảnh mà không nhập văn bản (`input_type = "image_only"`).
+## 2. app.js d?ng multer ??c file ?nh v?o req.file theo b? nh? t?m, kh?ng l?u file d?i h?n tr?n disk.
 
-### Các bước xử lý chi tiết:
-1. `ChatController.handle` gọi `ImageOnlyPipeline.run({ sessionId, inputType, image })`.
-2. Kiểm tra tính hợp lệ của file ảnh (buffer tồn tại, `mimetype` bắt đầu bằng `image/`).
-3. `ImageEmbeddingService.embedImage(image)`: Dùng SigLIP Vision Model (`siglip-base-patch16-384`) tạo image vector 768 chiều.
-4. `ImageRepository.searchImagesByImageVector()`: Tìm kiếm ảnh tương đồng nhất trong `image_collection` (`image_vector`).
-5. `S3Service.attachImageUrls()`: Chuyển `s3_path` thành `image_url` công khai hoặc presigned URL.
-6. `ConfidenceGuard.checkImageMatch()`: Kiểm tra độ tin cậy dựa trên ngưỡng:
-   - Nếu `top_score < imageMatchThreshold` $\rightarrow$ Trả `lowConfidenceResponse` với mã `LOW_CONFIDENCE_MATCH` kèm danh sách ảnh ứng viên.
-   - Nếu không tìm thấy `location_id` $\rightarrow$ Trả lỗi `IMAGE_LOCATION_NOT_FOUND`.
-7. `LocationRepository.getLocationById(locationId)`: Lấy metadata địa điểm từ `location_info`.
-8. Sử dụng câu hỏi mặc định: `IMAGE_ONLY_DEFAULT_QUERY = "Đây là địa điểm nào và thông tin tổng quan là gì?"`.
-9. `BgeM3EmbeddingService` tạo text vector cho câu hỏi mặc định $\rightarrow$ `TextRepository.searchDocsByTextVector()` tìm tài liệu mô tả địa điểm trong `text_collection` (filter theo `location_id`).
-10. `FusionService.fuse()` gom metadata, tài liệu, ảnh match và debug info.
-11. `AnswerGenerator.generate()` (intent: `overview`): Dùng Gemini tạo mô tả tổng quan về địa điểm đã nhận diện.
-12. Sinh `suggested_questions` gợi ý các hoạt động, vị trí, trải nghiệm liên quan đến địa điểm.
-13. Cập nhật context phiên làm việc và trả `okResponse(data)`.
 
----
+## 3. ChatController.handle trong src/controllers/chat.controller.js g?i inputRouterService.route() v?i sessionId=req.body.session_id, message=req.body.message v? image=req.file.
 
-## 4. LUỒNG `text_image` (`image_text`)
 
-Luồng xử lý khi người dùng gửi đồng thời cả hình ảnh và câu hỏi văn bản (`input_type = "image_text"`).
+## 4. InputRouterService trong src/services/inputRouter.service.js chu?n h?a message b?ng trim(), ki?m tra c? message v? c? image hay kh?ng, sau ?? ph?n lo?i input_type.
 
-### Các bước xử lý chi tiết:
-1. `ChatController.handle` gọi `ImageTextPipeline.run({ sessionId, message, inputType, image })`.
-2. Xác thực file ảnh hợp lệ (`validateUploadedImage`).
-3. Lấy ngữ cảnh hiện tại và tạo `imageVector` (SigLIP 768-dim) từ ảnh upload.
-4. Tìm kiếm ảnh tương đồng trong `image_collection` và gắn URL qua `S3Service`.
-5. `evaluateImageConfidence()` phân loại độ tin cậy 2 cấp:
-   - `topScore < imageLowConfidenceThreshold` (VD: < 0.25) $\rightarrow$ Trả `outOfScopeResponse` (`IMAGE_NOT_TRAVEL_RELATED`).
-   - `topScore < imageMatchThreshold` (VD: < 0.75) $\rightarrow$ Trả `lowConfidenceResponse` (`LOW_CONFIDENCE_MATCH`).
-6. Lấy `imagePlace` (`location_id`, `location_name`) từ ảnh match tốt nhất, cập nhật vào `imageContext`.
-7. `TextDomainGuard.check(message, imageContext)` kiểm tra câu hỏi văn bản.
-8. `ImageTextUnderstandingService.understand()`: Gọi Gemini phân tích ý định theo `IMAGE_TEXT_UNDERSTANDING_SCHEMA`:
-   - Xác định `image_place_id`, `text_place_id`, `final_place_id`.
-   - `is_reference_question`: Câu hỏi chỉ về ảnh (VD: *"ở đây có gì chơi?"*).
-   - `is_specific_place_question`: Câu hỏi nhắc đích danh địa điểm cụ thể trong text.
-9. `ImageTextResolver.resolve()`:
-   - Xử lý xung đột (**Conflict Resolution**): Nếu ảnh là địa điểm A (VD: Kỳ Co) nhưng câu hỏi nhắc địa điểm B (VD: Eo Gió), resolver gán `conflict_type = "image_text_place_mismatch"`.
-10. **Kế hoạch truy xuất**:
-   - Truy xuất tài liệu từ `text_collection` theo `final_place_id`.
-   - Nếu cần thêm ảnh liên quan $\rightarrow$ Thực hiện Hybrid Image Search với trọng số SigLIP **0.5** và Caption BGE-M3 **0.5**.
-   - Lấy metadata từ `location_info`.
-11. `AnswerGenerator.generate()`: Tạo câu trả lời có chứa gợi ý giải quyết xung đột (`answer_hint`) nếu ảnh và text nói về hai địa điểm khác nhau.
-12. Cập nhật context (`last_image_place_id`, `last_text_place_id`, `last_conflict`) và trả về `okResponse(data)`.
 
----
+## 5. N?u kh?ng c? c? message l?n image, controller tr? errorResponse v?i error_code EMPTY_INPUT, HTTP 400.
 
-## 5. GHI CHÚ VỀ PHẦN CHƯA THẤY RÕ TRONG CODE
+6. N?u input_type l? text_only, controller g?i textOnlyPipeline.run(). N?u l? image_only, controller g?i imageOnlyPipeline.run(). N?u l? image_text, controller g?i imageTextPipeline.run().
 
-- **Khai báo Router**: Endpoint `/api/chat` hiện được mount trực tiếp trong `src/app.js` thay vì tách file riêng trong `src/routes/chat.routes.js`.
-- **Placeholder Pipeline**: `TravelQueryPipeline` trong `src/pipelines/travel-query.pipeline.js` hiện là file giữ chỗ, chưa được controller kích hoạt.
-- **LLM Fallback**: `TextUnderstandingService` và `ImageTextUnderstandingService` có fallback heuristic nội bộ nhưng mặc định cấu hình `useFallbackWhenNotConfigured = false`. Hệ thống yêu cầu Gemini API Key hợp lệ để phân tích ý định.
-- **Fusion Logic**: `FusionService` hiện tại đóng vai trò là một Data Aggregator gom dữ liệu retrieval thành payload chuẩn trước khi gửi vào LLM.
+
+### C?c ki?u input_type trong code:
+
+
+| input_type | ?i?u ki?n ph?n lo?i | Pipeline ???c g?i |
+| --- | --- | --- |
+| text_only | C? message, kh?ng c? image | TextOnlyPipeline trong src/pipelines/text-only.pipeline.js |
+| image_only | C? image, kh?ng c? message | ImageOnlyPipeline trong src/pipelines/image-only.pipeline.js |
+| image_text | C? c? message v? image | ImageTextPipeline trong src/pipelines/image-text.pipeline.js |
+| empty_input | Kh?ng c? message v? kh?ng c? image | Kh?ng g?i pipeline, tr? EMPTY_INPUT |
+
+L?u ? ??t t?n: y?u c?u t?i li?u d?ng heading text_image. Trong backend hi?n t?i, input_type th?c t? trong InputRouterService v? ChatController l? image_text. V? v?y ph?n text_image d??i ??y m? t? ??ng lu?ng code image_text.
+
+Response contract chung ???c t?o b?i src/utils/responseFormatter.js g?m c?c tr??ng: success, status, error_code, message, data, suggested_questions. C?c status hi?n c? l? ok, error, out_of_scope, need_clarification v? low_confidence.
+
+
+### C?u h?nh Qdrant v? model theo code hi?n t?i:
+
+
+| Nh?m | T?n trong code | Gi? tr?/ch?c n?ng |
+| --- | --- | --- |
+| Qdrant collection | appConfig.qdrant.collections.location | location_info |
+| Qdrant collection | appConfig.qdrant.collections.image | image_collection |
+| Qdrant collection | appConfig.qdrant.collections.text | text_collection |
+| Vector text docs | TEXT_VECTOR_NAME | text_vector |
+| Vector ?nh | IMAGE_VECTOR_NAME | image_vector |
+| Vector caption ?nh | CAPTION_VECTOR_NAME | caption_vector |
+| Text embedding | BgeM3EmbeddingService | onnx-community/bge-m3-ONNX, dimension 1024 |
+| Image/Text-to-image embedding | ImageEmbeddingService v? SiglipTextEmbeddingService | Xenova/siglip-base-patch16-384, dimension 768 |
+| LLM | GeminiClient | D?ng GEMINI_API_KEYS ho?c GEMINI_API_KEY v? GEMINI_MODEL |
+
+
+## text_only
+
+Lu?ng n?y x? l? tr??ng h?p ng??i d?ng ch? nh?p v?n b?n. ?i?u ki?n v?o l? InputRouterService ph?n lo?i input_type=text_only v? c? message sau khi trim() v? kh?ng c? req.file.
+
+
+### C?c b??c x? l?
+
+
+## 1. ChatController.handle nh?n routeResult t? inputRouterService.route() v? g?i textOnlyPipeline.run({ sessionId, message, inputType }).
+
+
+## 2. TextOnlyPipeline ki?m tra inputType. N?u kh?ng ph?i text_only th? tr? PIPELINE_NOT_IMPLEMENTED.
+
+
+## 3. Pipeline l?y context h?i tho?i b?ng contextService.getContext(sessionId). Context ch?a old_input, old_rewrite_query, active_location_id, active_location_name, last_returned_images, last_image_place_id, last_text_place_id, last_conflict v? pending_question.
+
+
+## 4. Pipeline g?i textDomainGuard.check(message, context). File src/guards/textDomain.guard.js ch? ch?n c?c tr??ng h?p ch?c ch?n ngo?i ph?m vi du l?ch d?a tr?n OUT_OF_DOMAIN_KEYWORDS. N?u message r?ng th? tr? EMPTY_INPUT. N?u ngo?i ph?m vi th? tr? outOfScopeResponse v?i error_code TEXT_NOT_TRAVEL_RELATED. C?c c?u h?i m? h? c? context v?n ???c cho ?i ti?p.
+
+
+## 5. Pipeline g?i textUnderstandingService.understand({ message, context }). Khi Gemini ???c c?u h?nh, TextUnderstandingService d?ng GeminiClient.generateJson() ?? sinh JSON ??ng TEXT_UNDERSTANDING_SCHEMA.
+
+6. Schema text understanding b?t bu?c c? c?c tr??ng rewrite_query, need_docs, need_images, need_metadata, location_id, location_name, is_follow_up v? intent. intent h?p l? g?m overview, activity, image_search, metadata, location_lookup, unknown.
+
+7. N?u Gemini tr? JSON sai ho?c thi?u field, validateLlmResult() n?m LlmClassificationError v? pipeline tr? errorResponse v?i error_code LLM_CLASSIFICATION_ERROR.
+
+8. Sau khi hi?u c?u h?i, pipeline g?i referenceResolver.resolve(). Service n?y x? l? follow-up d?a tr?n context, v? d? tham chi?u active_location_id/active_location_name ho?c ?nh theo rank trong last_returned_images.
+
+9. Pipeline g?i retrievalPlanner.plan(resolvedUnderstanding). Planner chuy?n need_docs, need_images, need_metadata th?nh shouldSearchDocs, shouldSearchImages, shouldGetMetadata; ??ng th?i l?y topKDocs v? topKImages t? appConfig.retrieval.
+
+10. N?u shouldSearchDocs=true, pipeline g?i bgeM3EmbeddingService.embedText(resolvedUnderstanding.rewrite_query) ?? t?o vector BGE-M3, sau ?? g?i textRepository.searchDocsByTextVector(). Repository t?m trong collection text_collection, vector text_vector, c? filter location_id n?u plan.finalLocationId t?n t?i.
+
+11. N?u ch?a c? finalLocationId nh?ng docs tr? v? c? location_id, pipeline l?y location_id ??u ti?n t? docs ?? d?ng cho c?c b??c sau.
+
+12. N?u shouldSearchImages=true, pipeline t?o ho?c t?i s? d?ng bgeTextVector, g?i siglipTextEmbeddingService.embedText() ?? t?o SigLIP text vector. Sau ?? imageRepository.hybridSearchImagesByText() t?m ?nh trong image_collection theo hai nh?nh: image_vector v?i SigLIP text vector v? caption_vector v?i BGE-M3 vector. Lu?ng text_only d?ng weights siglip=0.3 v? caption=0.7.
+
+13. K?t qu? ?nh hybrid ???c merge theo image_id ho?c s3_path, t?nh final_score, x?p rank r?i ???c truy?n qua s3Service.attachImageUrls(). Service n?y parse s3_path th?nh s3_bucket v? s3_key, sau ?? t?o image_url theo S3_URL_MODE public ho?c presigned.
+
+14. N?u ch?a c? finalLocationId nh?ng images tr? v? c? location_id, pipeline l?y location_id ??u ti?n t? images.
+
+15. N?u shouldGetMetadata=true v? c? finalLocationId, pipeline g?i locationRepository.getLocationById() ?? l?y metadata trong collection location_info b?ng scrollPoints v?i filter location_id.
+
+16. Pipeline x?c ??nh finalLocationId v? finalLocationName b?ng getFirstLocationId() v? getFirstLocationName() t? metadata, understanding, docs ho?c images.
+
+17. Pipeline g?i fusionService.fuse() ?? gom message, rewrite_query, docs, images, metadata, plan v? debug th?nh fusedContext. Trong code hi?n t?i fusedContext ch? y?u l? object gom d? li?u, ch?a c? thu?t to?n fusion ph?c t?p.
+
+18. Pipeline g?i answerGenerator.generate(). AnswerGenerator ch? d?ng d? li?u retrieval JSON trong prompt g?i Gemini, y?u c?u tr? l?i ti?ng Vi?t, kh?ng b?a ngo?i d? li?u, kh?ng d?ng markdown bold/italic v? kh?ng d?ng k? t? **. N?u intent kh?ng ph?i image_search m? docs r?ng, AnswerGenerator tr? c?u b?o ch?a c? ?? d? li?u m? kh?ng g?i Gemini.
+
+19. Pipeline t?o data response g?m session_id, input_type=text_only, pipeline=text_only_pipeline, answer, location, images, retrieval, debug v? suggested_questions.
+
+20. contextService.updateOnSuccess() c?p nh?t old_input, old_rewrite_query, active_location_id, active_location_name, last_returned_images, last_text_place_id v? last_conflict=null.
+
+21. Pipeline tr? okResponse(data) v?i HTTP 200. N?u retrieval t?ng ph?n l?i, pipeline ghi retrieval_errors trong debug nh?ng v?n c? th? ti?p t?c n?u c?n ?? d? li?u ?? sinh answer.
+
+
+### B?ng t?m t?t text_only
+
+
+| M?c | N?i dung |
+| --- | --- |
+| Input | multipart/form-data c? session_id v? message; kh?ng c? image. |
+| Th?nh ph?n x? l? ch?nh | ChatController, InputRouterService, TextOnlyPipeline, TextDomainGuard, TextUnderstandingService, ReferenceResolver, RetrievalPlanner, BgeM3EmbeddingService, SiglipTextEmbeddingService, TextRepository, ImageRepository, LocationRepository, S3Service, FusionService, AnswerGenerator, ContextService. |
+| Collection Qdrant s? d?ng | text_collection khi need_docs=true; image_collection khi need_images=true; location_info khi need_metadata=true v? c? location_id. |
+| Output tr? v? | ApiResponse status ok/out_of_scope/error/need_clarification. Khi ok, data c? answer, location, images, retrieval, debug v? suggested_questions. |
+
+
+## image_only
+
+Lu?ng n?y x? l? tr??ng h?p ng??i d?ng ch? g?i ?nh. ?i?u ki?n v?o l? InputRouterService ph?n lo?i input_type=image_only v? c? req.file v? kh?ng c? message.
+
+
+### C?c b??c x? l?
+
+
+## 1. ChatController.handle g?i imageOnlyPipeline.run({ sessionId, inputType, image }).
+
+
+## 2. ImageOnlyPipeline ki?m tra inputType. N?u kh?ng ph?i image_only th? tr? PIPELINE_NOT_IMPLEMENTED.
+
+
+## 3. Pipeline g?i validateUploadedImage(image). H?m n?y y?u c?u image c? buffer v? mimetype b?t ??u b?ng image/. N?u thi?u ?nh tr? EMPTY_INPUT, n?u kh?ng ph?i ?nh tr? UNSUPPORTED_FILE_TYPE.
+
+
+## 4. Pipeline g?i imageEmbeddingService.embedImage(image). Service n?y d?ng SiglipImageModelClient trong src/embeddings/embedding.client.js ?? decode ?nh b?ng RawImage, ch?y SiglipVisionModel v? tr? vector ?nh dimension 768.
+
+
+## 5. Pipeline g?i imageRepository.searchImagesByImageVector({ imageVector, topK }). Repository t?m trong collection image_collection, vector name image_vector, source image_vector, topK l?y t? appConfig.retrieval.topKImages.
+
+6. Ngay sau search ?nh, pipeline b?t bu?c g?i s3Service.attachImageUrls(rawMatches). Service n?y ??c payload.s3_path, parse th?nh s3_bucket v? s3_key, r?i t?o image_url. N?u kh?ng t?o ???c URL th? image_url c? th? l? null nh?ng pipeline v?n ti?p t?c theo metadata.
+
+7. Pipeline g?i confidenceGuard.checkImageMatch(matchedImages). Guard d?ng imageMatchThreshold v? imageLowConfidenceThreshold t? appConfig.retrieval. N?u score ?nh ??u ti?n >= imageMatchThreshold th? passed=true. N?u th?p h?n th? pipeline tr? lowConfidenceResponse v?i error_code LOW_CONFIDENCE_MATCH v? danh s?ch candidate images.
+
+8. N?u match ?? tin c?y, pipeline l?y matchedImage=matchedImages[0] v? locationId t? matchedImage.location_id. N?u kh?ng c? location_id, pipeline tr? lowConfidenceResponse v?i error_code IMAGE_LOCATION_NOT_FOUND.
+
+9. Pipeline g?i locationRepository.getLocationById(locationId) ?? l?y metadata ??a ?i?m t? collection location_info. N?u l?i Qdrant, l?i ???c ghi v?o retrievalErrors.
+
+10. Pipeline t?o default query b?ng h?ng IMAGE_ONLY_DEFAULT_QUERY: ???y l? ??a ?i?m n?o v? th?ng tin t?ng quan l? g???.
+
+11. Pipeline g?i bgeM3EmbeddingService.embedText(IMAGE_ONLY_DEFAULT_QUERY) ?? t?o vector text, sau ?? g?i textRepository.searchDocsByTextVector({ textVector, locationId, topK }) ?? t?m t?i li?u trong text_collection, vector text_vector, c? filter location_id ??ng v?i ??a ?i?m ?? match t? ?nh.
+
+12. Pipeline g?i fusionService.fuse() ?? gom default query, docs, matchedImages, metadata, plan v? debug.
+
+13. Pipeline g?i answerGenerator.generate() v?i intent overview. N?u docs r?ng, AnswerGenerator tr? c?u b?o ch?a c? ?? d? li?u trong h? th?ng. N?u c? docs, AnswerGenerator g?i Gemini ?? sinh c?u tr? l?i ti?ng Vi?t d?a tr?n retrieval JSON.
+
+14. Pipeline t?o suggested_questions theo locationName n?u c?, v? d? h?i ??a ?i?m c? g? ??p, c? g? ch?i ho?c xem th?m ?nh.
+
+15. Pipeline t?o data g?m session_id, input_type=image_only, pipeline=image_only_pipeline, default_query, answer, location, matched_image, images, retrieval v? debug. debug c? uploaded_image, docs_count, images_count, top_score, used_collections v? retrieval_errors.
+
+16. contextService.updateOnSuccess() c?p nh?t old_input="[image_only]", old_rewrite_query=IMAGE_ONLY_DEFAULT_QUERY, active_location_id, active_location_name, last_returned_images, last_text_place_id v? last_conflict=null.
+
+17. Pipeline tr? okResponse(data) v?i HTTP 200.
+
+
+### B?ng t?m t?t image_only
+
+
+| M?c | N?i dung |
+| --- | --- |
+| Input | multipart/form-data c? session_id v? image; kh?ng c? message. Image ???c multer ??a v?o req.file trong b? nh?. |
+| Th?nh ph?n x? l? ch?nh | ChatController, InputRouterService, ImageOnlyPipeline, ImageEmbeddingService, ImageRepository, S3Service, ConfidenceGuard, LocationRepository, BgeM3EmbeddingService, TextRepository, FusionService, AnswerGenerator, ContextService. |
+| Collection Qdrant s? d?ng | image_collection ?? match ?nh b?ng image_vector; location_info ?? l?y metadata theo location_id; text_collection ?? l?y docs b?ng text_vector v?i filter location_id. |
+| Output tr? v? | N?u score th?p: status low_confidence. N?u ?? tin c?y: status ok, data c? answer, location, matched_image, images, retrieval, debug v? suggested_questions. |
+
+
+## text_image
+
+Lu?ng n?y m? t? tr??ng h?p ng??i d?ng g?i c? v?n b?n v? ?nh. Trong code backend hi?n t?i, t?n input_type l? image_text v? pipeline l? image_text_pipeline. Heading text_image ???c d?ng theo y?u c?u t?i li?u, nh?ng t?t c? t?n class/file/h?m b?n d??i gi? ??ng theo code.
+
+
+### C?c b??c x? l?
+
+
+## 1. ChatController.handle nh?n routeResult.input_type=image_text t? InputRouterService v? g?i imageTextPipeline.run({ sessionId, message, inputType, image }).
+
+
+## 2. ImageTextPipeline ki?m tra inputType. N?u kh?ng ph?i image_text th? tr? PIPELINE_NOT_IMPLEMENTED.
+
+
+## 3. Pipeline g?i validateUploadedImage(image) d?ng l?i t? image-only.pipeline.js. N?u thi?u ?nh ho?c mimetype kh?ng ph?i image/* th? tr? EMPTY_INPUT ho?c UNSUPPORTED_FILE_TYPE.
+
+
+## 4. Pipeline l?y context b?ng contextService.getContext(sessionId) v? kh?i t?o retrievalDebug v?i used_collections ban ??u l? image_collection.
+
+
+## 5. Pipeline g?i imageEmbeddingService.embedImage(image) ?? t?o SigLIP image vector dimension 768.
+
+6. Pipeline g?i imageRepository.searchImagesByImageVector() ?? t?m ?nh t??ng t? trong image_collection b?ng vector image_vector.
+
+7. Pipeline g?i s3Service.attachImageUrls(rawMatches) ?? b? sung image_url, s3_bucket v? s3_key t? payload.s3_path.
+
+8. Pipeline g?i evaluateImageConfidence(matchedImages). Kh?c image_only, image_text t? ph?n bi?t hai m?c: n?u topScore < imageLowConfidenceThreshold th? tr? outOfScopeResponse v?i error_code IMAGE_NOT_TRAVEL_RELATED; n?u topScore < imageMatchThreshold th? tr? lowConfidenceResponse v?i error_code LOW_CONFIDENCE_MATCH; n?u ??t ng??ng th? ?i ti?p.
+
+9. Pipeline l?y matchedImage=matchedImages[0] v? imagePlace g?m location_id, location_name t? ?nh match. N?u ?nh match kh?ng c? location_id, pipeline tr? lowConfidenceResponse v?i error_code IMAGE_LOCATION_NOT_FOUND.
+
+10. Pipeline t?o imageContext b?ng context hi?n t?i c?ng v?i active_location_id, active_location_name, last_image_place_id v? last_returned_images t? ?nh ?? match.
+
+11. Pipeline g?i textDomainGuard.check(message, imageContext). N?u text ch?c ch?n ngo?i ph?m vi du l?ch, pipeline tr? outOfScopeResponse v?i error_code TEXT_NOT_TRAVEL_RELATED, nh?ng v?n c? matched_image trong data debug.
+
+12. Pipeline g?i imageTextUnderstandingService.understand({ message, imagePlace, context: imageContext }). Khi Gemini ???c c?u h?nh, service d?ng GeminiClient.generateJson() theo IMAGE_TEXT_UNDERSTANDING_SCHEMA.
+
+13. Schema image_text understanding b?t bu?c c? rewrite_query, need_docs, need_images, need_metadata, image_place_id, image_place_name, text_place_id, text_place_name, final_place_id, final_place_name, is_reference_question, is_specific_place_question v? intent. intent h?p l? g?m overview, activity, image_search, metadata, location_lookup, comparison, unknown.
+
+14. N?u Gemini tr? JSON sai ho?c thi?u field, pipeline tr? errorResponse v?i error_code LLM_CLASSIFICATION_ERROR.
+
+15. Pipeline g?i enrichUnderstandingLocation(). N?u understanding c? text_place_name nh?ng ch?a c? text_place_id, service g?i locationRepository.findLocationByName() ?? d? trong location_info. H?m n?y scroll t?i ?a 200 ?i?m v? so kh?p normalizeText v?i location_name, location_key ho?c title_name.
+
+16. Pipeline g?i imageTextResolver.resolve(). Resolver quy?t ??nh final_place_id/final_place_name t? ??a ?i?m trong ?nh v? ??a ?i?m trong text. N?u text nh?c ??a ?i?m kh?c ?nh, resolver t?o conflict c? conflict_type=image_text_place_mismatch. N?u c?u h?i l? tham chi?u ki?u ?? ??y?, ?trong ?nh?, resolver ?u ti?n imagePlace.
+
+17. Pipeline g?i buildPlan(resolved). Plan g?m shouldSearchDocs, shouldSearchImages, shouldGetMetadata, finalLocationId, finalLocationName, topKDocs, topKImages v? intent.
+
+18. N?u shouldSearchDocs=true, pipeline g?i bgeM3EmbeddingService.embedText(resolved.rewrite_query) r?i textRepository.searchDocsByTextVector() trong text_collection b?ng text_vector, filter theo finalLocationId n?u c?.
+
+19. N?u shouldSearchImages=true, pipeline b?t debug.hybrid_image_search.used=true v? branches g?m siglip_text_to_image_vector, caption_bge_m3_vector. Pipeline t?o bgeTextVector n?u ch?a c?, t?o siglipTextVector b?ng siglipTextEmbeddingService.embedText(), r?i g?i imageRepository.hybridSearchImagesByText() v?i weights siglip=0.5 v? caption=0.5.
+
+20. Hybrid image search trong ImageRepository t?m song song trong image_collection b?ng image_vector cho SigLIP text-to-image v? caption_vector cho BGE-M3 caption vector, sau ?? merge k?t qu?, t?nh final_score v? rank. K?t qu? relatedImages ???c b? sung image_url qua s3Service.attachImageUrls().
+
+21. N?u shouldGetMetadata=true v? c? finalLocationId, pipeline g?i locationRepository.getLocationById() ?? l?y metadata t? location_info.
+
+22. Pipeline ch?n responseImages: n?u plan.shouldSearchImages=true th? d?ng relatedImages; n?u kh?ng th? tr? v? matchedImage ban ??u trong m?ng images.
+
+23. Pipeline x?c ??nh finalLocationName b?ng getFinalLocationName() t? metadata, resolved, images ho?c docs.
+
+24. Pipeline t?o responsePlan c? th?m conflict, r?i g?i fusionService.fuse() ?? gom d? li?u retrieval v? resolution.
+
+25. Pipeline g?i answerGenerator.generate() v?i resolution g?m image_place_id, image_place_name, text_place_id, text_place_name, final_place_id, final_place_name v? conflict. N?u conflict_type=image_text_place_mismatch, prompt c? answer_hint y?u c?u n?u ng?n g?n ?nh v? text ?ang nh?c hai ??a ?i?m kh?c nhau r?i tr? l?i theo final_place_name.
+
+26. Pipeline t?o data g?m session_id, input_type=image_text, pipeline=image_text_pipeline, answer, location, matched_image, images, retrieval, debug v? suggested_questions. debug l?u matched_image_id, image_place_id/name, text_place_id/name, final_place_id/name, image_similarity_score, docs_count, images_count, used_collections, hybrid_image_search, retrieval_errors v? conflict.
+
+27. contextService.updateOnSuccess() c?p nh?t old_input, old_rewrite_query, active_location_id=resolved.final_place_id, active_location_name, last_image_place_id, last_text_place_id, last_returned_images v? last_conflict.
+
+28. Pipeline tr? okResponse(data) v?i HTTP 200.
+
+
+### B?ng t?m t?t text_image
+
+
+| M?c | N?i dung |
+| --- | --- |
+| Input | multipart/form-data c? session_id, message v? image. Backend ph?n lo?i l? input_type=image_text. |
+| Th?nh ph?n x? l? ch?nh | ChatController, InputRouterService, ImageTextPipeline, ImageEmbeddingService, ImageRepository, S3Service, TextDomainGuard, ImageTextUnderstandingService, ImageTextResolver, BgeM3EmbeddingService, SiglipTextEmbeddingService, TextRepository, LocationRepository, FusionService, AnswerGenerator, ContextService. |
+| Collection Qdrant s? d?ng | image_collection ?? match ?nh ban ??u b?ng image_vector v? t?m ?nh li?n quan b?ng hybrid search; text_collection ?? t?m docs b?ng text_vector; location_info ?? d?/t?i metadata ??a ?i?m. |
+| Output tr? v? | C? th? tr? out_of_scope n?u ?nh ho?c text ngo?i ph?m vi, low_confidence n?u ?nh ch?a ?? tin c?y, error n?u LLM/Qdrant l?i n?ng, ho?c ok v?i answer, location, matched_image, images, retrieval, debug v? suggested_questions. |
+
+
+## Ghi ch? v? ph?n ch?a th?y r? trong code
+
+- Kh?ng th?y file router ri?ng cho chat nh? src/routes/chat.routes.js; endpoint /api/chat ?ang ???c khai b?o tr?c ti?p trong src/app.js.
+
+- TravelQueryPipeline trong src/pipelines/travel-query.pipeline.js hi?n l? placeholder v? kh?ng ???c ChatController d?ng cho ba lu?ng ch?nh.
+
+- TextUnderstandingService v? ImageTextUnderstandingService c? fallback heuristic trong class, nh?ng singleton ?ang d?ng m?c ??nh useFallbackWhenNotConfigured=false. Ngh?a l? flow th?c t? c?n Gemini ???c c?u h?nh, tr? khi test ho?c code kh?c inject option fallback.
+
+- FusionService hi?n ch? gom d? li?u retrieval v?o m?t object; ch?a th?y thu?t to?n fusion n?ng cao trong code.
+
+- T?i li?u n?y d?ng collection image_collection v? ?? l? gi? tr? m?c ??nh trong appConfig hi?n t?i. N?u .env ??i QDRANT_IMAGE_COLLECTION th? backend s? d?ng gi? tr? t? .env.
+
