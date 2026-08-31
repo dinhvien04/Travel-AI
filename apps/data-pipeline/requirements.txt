@@ -1,0 +1,12 @@
+boto3
+python-dotenv
+PyYAML
+qdrant-client
+transformers
+sentence-transformers
+torch
+pillow
+python-docx
+pypdf
+numpy
+fastembed

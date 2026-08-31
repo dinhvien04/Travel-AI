@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+**/dist/
+**/build/
+**/coverage/
+
+# Environment files - keep examples
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# Model/cache files
+.cache/
+**/.cache/
+apps/api/.cache/
+apps/api/node_modules/@huggingface/transformers/.cache/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime/temp files
+tmp/
+temp/
+*.tmp
+*.temp
+*.pid
+*.seed
+
+# TypeScript/Vite generated files
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Python cache/virtualenvs
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Local scratch/demo scripts that may contain personal API keys
+apps/chat_gemini.py
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

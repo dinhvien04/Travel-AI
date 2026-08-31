@@ -1,0 +1,228 @@
+{
+  "file_name": "architecture_2_image_only_simple.json",
+  "architecture_id": "ARCH_2_IMAGE_ONLY",
+  "title": "Kiến trúc 2: Xử lý Image Only đơn giản",
+  "applies_to": [
+    "User chỉ gửi 1 ảnh",
+    "Câu hỏi mặc định về thông tin tổng quan địa điểm trong ảnh"
+  ],
+  "goal": "Dùng ảnh để tìm image_id/location_id phù hợp nhất, lấy docs + metadata rồi trả lời tổng quan về địa điểm.",
+  "tech_stack": {
+    "backend_runtime": "Node.js + TypeScript",
+    "architecture_style": "MVC + Service Layer + Repository Pattern + Pipeline Orchestrator",
+    "framework_recommendation": "Express.js hoặc Fastify. Nếu muốn code nhanh theo MVC thì dùng Express.js + TypeScript.",
+    "frontend": "ReactTS + Vite",
+    "vector_db": "External Qdrant, chỉ đọc/search collection có sẵn",
+    "llm": "Gemini 2.5 Flash",
+    "text_embedding": "BAAI/bge-m3",
+    "image_embedding": "SigLIP",
+    "image_storage": "S3",
+    "context_store": "RAM theo session_id ở MVP, có thể nâng cấp Redis sau",
+    "qdrant_collections": {
+      "location_info": "metadata địa điểm",
+      "image_embedding": {
+        "description": "Collection ảnh duy nhất, chứa cả image_vector và caption_vector. Trong image_only flow chỉ bắt buộc dùng image_vector để match ảnh upload.",
+        "image_vector": "Dùng cho upload ảnh bằng SigLIP image encoder",
+        "caption_vector": "Dùng cho text-to-caption search ở text_only/image_text khi cần tìm ảnh bằng text"
+      },
+      "docs_embedding": {
+        "text_vector": "search docs bằng text, encoder BGE-M3"
+      }
+    },
+    "hard_rules": [
+      "Không tạo Docker Qdrant trong project này",
+      "Không tạo collection Qdrant trong backend",
+      "Không insert embedding vào Qdrant trong backend",
+      "Backend chỉ kết nối QDRANT_HOST/QDRANT_PORT để search collection có sẵn",
+      "Không hard-code API key",
+      "Mọi response trả theo ApiResponse contract để frontend render được"
+    ],
+    "suggested_backend_tree": {
+      "apps/api/src": [
+        "server.ts",
+        "app.ts",
+        "config/",
+        "controllers/",
+        "models/",
+        "routes/",
+        "services/",
+        "pipelines/",
+        "planners/",
+        "guards/",
+        "llm/",
+        "embeddings/",
+        "repositories/",
+        "schemas/",
+        "utils/",
+        "middlewares/",
+        "tests/"
+      ]
+    }
+  },
+  "api_contract": {
+    "endpoint": "POST /api/chat",
+    "content_type": "multipart/form-data",
+    "form_data": {
+      "session_id": "string",
+      "message": "string | optional",
+      "image": "File | optional"
+    },
+    "api_response_shape": {
+      "success": "boolean",
+      "status": "ok | out_of_scope | need_clarification | low_confidence | not_found | error",
+      "error_code": "string | null",
+      "message": "string | null",
+      "data": "object | null",
+      "suggested_questions": "string[] | optional"
+    }
+  },
+  "input_router": {
+    "condition": "image exists && message not exists",
+    "input_type": "image_only",
+    "pipeline": "imageOnlyPipeline"
+  },
+  "conversation_context_fields": [
+    "old_input",
+    "old_rewrite_query",
+    "active_place_id",
+    "active_place_name",
+    "last_returned_images",
+    "last_suggested_places"
+  ],
+  "mvc_mapping": {
+    "controller": "chat.controller.ts nhận multipart image và gọi ChatService",
+    "service": [
+      "image.service.ts validate/normalize image",
+      "context.service.ts load/update context",
+      "retrieval.service.ts gọi repositories",
+      "fusion.service.ts gom dữ liệu",
+      "answer.service.ts gọi Gemini"
+    ],
+    "pipeline": "image-only.pipeline.ts chứa luồng xử lý image only",
+    "guard": [
+      "image-domain.guard.ts kiểm tra ảnh có phù hợp domain du lịch không",
+      "confidence.guard.ts kiểm tra ngưỡng top1_score"
+    ],
+    "repository": [
+      "image.repository.ts search image_embedding.image_vector",
+      "docs.repository.ts search docs_embedding.text_vector + filter location_id",
+      "location.repository.ts get location_info"
+    ],
+    "embedding": "siglip-embedding.service.ts encode ảnh upload thành image_vector"
+  },
+  "flow_steps": [
+    {
+      "step": 1,
+      "name": "User Image",
+      "description": "Nhận single image từ frontend"
+    },
+    {
+      "step": 2,
+      "name": "Input Router",
+      "description": "Phân loại image_only"
+    },
+    {
+      "step": 3,
+      "name": "Load Conversation Context",
+      "description": "Lấy context theo session_id"
+    },
+    {
+      "step": 4,
+      "name": "Image Search & Matching",
+      "description": "Encode ảnh bằng SigLIP, search similar image trong image_embedding.image_vector"
+    },
+    {
+      "step": 5,
+      "name": "Confidence Guard",
+      "description": "top1_score >= threshold thì hợp lệ, score thấp thì low_confidence/out_of_scope"
+    },
+    {
+      "step": 6,
+      "name": "Return Matched Image/Place",
+      "description": "Lấy image_id, place_id/location_id, place_name từ payload"
+    },
+    {
+      "step": 7,
+      "name": "Default Overview Query",
+      "description": "Sinh câu hỏi mặc định: Đây là địa điểm nào và thông tin tổng quan là gì?"
+    },
+    {
+      "step": 8,
+      "name": "Structured Output",
+      "description": "Tạo default_query, image_id, place_id, need_docs=true, need_metadata=true"
+    },
+    {
+      "step": 9,
+      "name": "Retrieval Planner",
+      "description": "Dùng image_id + default_query để lấy dữ liệu"
+    },
+    {
+      "step": 10,
+      "name": "Docs Retrieval",
+      "description": "Search docs_embedding.text_vector theo default_query và filter location_id"
+    },
+    {
+      "step": 11,
+      "name": "Metadata Retrieval",
+      "description": "Get place_metadata từ location_info"
+    },
+    {
+      "step": 12,
+      "name": "Result Fusion",
+      "description": "Gom matched image + docs + metadata"
+    },
+    {
+      "step": 13,
+      "name": "LLM Answer Generator",
+      "description": "Trả lời tổng quan về địa điểm trong ảnh"
+    },
+    {
+      "step": 14,
+      "name": "Response to User",
+      "description": "Trả answer + location + matched image"
+    },
+    {
+      "step": 15,
+      "name": "Update Conversation Context",
+      "description": "Update active_place_id, active_place_name, last_returned_images nếu status=ok"
+    }
+  ],
+  "structured_output": {
+    "default_query": "Đây là địa điểm nào và thông tin tổng quan là gì?",
+    "image_id": "string",
+    "place_id": "string",
+    "place_name": "string",
+    "need_docs": true,
+    "need_metadata": true,
+    "need_images": false,
+    "is_follow_up": false
+  },
+  "confidence_thresholds": {
+    "image_match_threshold": 0.75,
+    "image_low_confidence_threshold": 0.55,
+    "top1_score >= 0.75": "status=ok",
+    "0.55 <= top1_score < 0.75": "status=low_confidence, trả candidate_locations",
+    "top1_score < 0.55": "status=out_of_scope hoặc not_found"
+  },
+  "retrieval_rules": {
+    "uploaded_image": "search image_embedding.image_vector bằng SigLIP vector",
+    "docs": "search docs_embedding.text_vector với filter location_id",
+    "metadata": "get location_info theo location_id",
+    "images": "Trong image_only flow đơn giản không bắt buộc hybrid search; chỉ search image_embedding.image_vector để match ảnh upload. Nếu sau này user hỏi 'cho xem thêm ảnh' thì chuyển sang text/image_text flow và dùng hybridSearchImagesByText."
+  },
+  "success_acceptance_examples": [
+    {
+      "input": "User gửi ảnh Kỳ Co",
+      "expected": "matched_location_id=ky_co, answer mô tả tổng quan Kỳ Co, status=ok"
+    }
+  ],
+  "errors": [
+    "UNSUPPORTED_FILE_TYPE",
+    "IMAGE_TOO_LARGE",
+    "IMAGE_NOT_TRAVEL_RELATED",
+    "LOW_CONFIDENCE_MATCH",
+    "IMAGE_LOCATION_NOT_FOUND",
+    "QDRANT_SEARCH_ERROR",
+    "S3_URL_ERROR"
+  ]
+}

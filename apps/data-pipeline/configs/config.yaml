@@ -1,0 +1,29 @@
+s3:
+  bucket: ${S3_BUCKET}
+  locations_key: locatio.json
+  image_folder_name: image
+  doc_folder_name: docx
+
+qdrant:
+  url: ${QDRANT_URL}
+
+collections:
+  location_info: location_info
+  image_collection: image_collection
+  text_collection: text_collection
+
+models:
+  siglip: google/siglip-base-patch16-384
+  florence: microsoft/Florence-2-base-ft
+  bge: BAAI/bge-m3
+  translator: Helsinki-NLP/opus-mt-en-vi
+  use_translator: true
+
+pipeline:
+  batch_size: 4
+  skip_existing: true
+
+chunking:
+  chunk_size: 800
+  chunk_overlap: 120
+

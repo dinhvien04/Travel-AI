@@ -1,0 +1,324 @@
+{
+  "file_name": "architecture_3_text_image_specific_question.json",
+  "architecture_id": "ARCH_3_TEXT_IMAGE",
+  "title": "Kiến trúc 3: Xử lý Text + Image",
+  "applies_to": [
+    "User gửi ảnh + câu hỏi tham chiếu",
+    "User gửi ảnh + câu hỏi về địa điểm cụ thể",
+    "Ảnh dùng để xác định địa điểm, text dùng để xác định ý định cần hỏi"
+  ],
+  "goal": "Kết hợp image understanding và text understanding để xác định final_place_id, rewrite query rồi retrieval docs/images/metadata phù hợp.",
+  "tech_stack": {
+    "backend_runtime": "Node.js + TypeScript",
+    "architecture_style": "MVC + Service Layer + Repository Pattern + Pipeline Orchestrator",
+    "framework_recommendation": "Express.js hoặc Fastify. Nếu muốn code nhanh theo MVC thì dùng Express.js + TypeScript.",
+    "frontend": "ReactTS + Vite",
+    "vector_db": "External Qdrant, chỉ đọc/search collection có sẵn",
+    "llm": "Gemini 2.5 Flash",
+    "text_embedding": "BAAI/bge-m3",
+    "image_embedding": "SigLIP",
+    "image_storage": "S3",
+    "context_store": "RAM theo session_id ở MVP, có thể nâng cấp Redis sau",
+    "qdrant_collections": {
+      "location_info": "metadata địa điểm",
+      "image_embedding": {
+        "description": "Collection ảnh duy nhất, chứa cả vector ảnh và vector caption. Không có CAPTION_COLLECTION riêng.",
+        "image_vector": "Dùng cho upload ảnh bằng SigLIP image encoder và text-to-image bằng SigLIP text encoder",
+        "caption_vector": "Dùng cho text-to-caption semantic search bằng BGE-M3"
+      },
+      "docs_embedding": {
+        "text_vector": "search docs bằng text, encoder BGE-M3"
+      }
+    },
+    "hard_rules": [
+      "Không tạo Docker Qdrant trong project này",
+      "Không tạo collection Qdrant trong backend",
+      "Không insert embedding vào Qdrant trong backend",
+      "Backend chỉ kết nối QDRANT_HOST/QDRANT_PORT để search collection có sẵn",
+      "Không hard-code API key",
+      "Mọi response trả theo ApiResponse contract để frontend render được"
+    ],
+    "suggested_backend_tree": {
+      "apps/api/src": [
+        "server.ts",
+        "app.ts",
+        "config/",
+        "controllers/",
+        "models/",
+        "routes/",
+        "services/",
+        "pipelines/",
+        "planners/",
+        "guards/",
+        "llm/",
+        "embeddings/",
+        "repositories/",
+        "schemas/",
+        "utils/",
+        "middlewares/",
+        "tests/"
+      ]
+    },
+    "hybrid_image_search_by_text": {
+      "enabled": true,
+      "used_when": "need_images=true trong image_text pipeline, ví dụ user gửi ảnh + 'cho tôi xem thêm ảnh chỗ này'",
+      "collection": "image_embedding",
+      "filter_location": "final_place_id",
+      "branches": [
+        {
+          "branch": "siglip_text_to_image_vector",
+          "query_input": "rewrite_query",
+          "encoder": "SigLIP text encoder",
+          "vector_name": "image_vector",
+          "weight": 0.5
+        },
+        {
+          "branch": "bge_m3_text_to_caption_vector",
+          "query_input": "rewrite_query",
+          "encoder": "BAAI/bge-m3",
+          "vector_name": "caption_vector",
+          "weight": 0.5
+        }
+      ],
+      "merge_key": "payload.image_id, nếu thiếu thì dùng payload.path",
+      "score_formula": "final_score = siglip_score * siglip_weight + caption_score * caption_weight",
+      "hard_rule": "Không tạo CAPTION_COLLECTION riêng; cả 2 nhánh đều search trong image_embedding."
+    }
+  },
+  "api_contract": {
+    "endpoint": "POST /api/chat",
+    "content_type": "multipart/form-data",
+    "form_data": {
+      "session_id": "string",
+      "message": "string | optional",
+      "image": "File | optional"
+    },
+    "api_response_shape": {
+      "success": "boolean",
+      "status": "ok | out_of_scope | need_clarification | low_confidence | not_found | error",
+      "error_code": "string | null",
+      "message": "string | null",
+      "data": "object | null",
+      "suggested_questions": "string[] | optional"
+    }
+  },
+  "input_router": {
+    "condition": "image exists && message exists",
+    "input_type": "image_text",
+    "pipeline": "imageTextPipeline"
+  },
+  "conversation_context_fields": [
+    "old_input",
+    "old_rewrite_query",
+    "active_place_id",
+    "active_place_name",
+    "last_image_place_id",
+    "last_text_place_id",
+    "last_conflict"
+  ],
+  "mvc_mapping": {
+    "controller": "chat.controller.ts nhận message + image multipart",
+    "service": [
+      "chat.service.ts điều phối chung",
+      "image.service.ts xử lý ảnh",
+      "text-understanding.service.ts hiểu câu hỏi text",
+      "retrieval.service.ts truy xuất Qdrant",
+      "fusion.service.ts gom kết quả",
+      "answer.service.ts sinh câu trả lời"
+    ],
+    "pipeline": "image-text.pipeline.ts chứa luồng xử lý image + text",
+    "guard": [
+      "image-domain.guard.ts kiểm tra ảnh",
+      "text-domain.guard.ts kiểm tra text",
+      "confidence.guard.ts kiểm tra match ảnh"
+    ],
+    "planner": [
+      "input-router.ts phân loại input",
+      "retrieval-planner.ts quyết định nguồn retrieval",
+      "need-flags-detector.ts chuẩn hóa need flags"
+    ],
+    "repository": [
+      "image.repository.ts search image_embedding.image_vector khi user upload ảnh",
+      "image.repository.ts hybridSearchImagesByText() khi need_images=true: search image_vector bằng SigLIP text vector và caption_vector bằng BGE-M3 vector trong cùng collection image_embedding",
+      "docs.repository.ts search docs_embedding.text_vector",
+      "location.repository.ts get metadata"
+    ],
+    "embedding": [
+      "siglip-image-embedding.service.ts encode ảnh upload để match địa điểm",
+      "siglip-text-embedding.service.ts encode rewrite_query để search image_embedding.image_vector khi cần tìm ảnh bằng text",
+      "bge-m3-embedding.service.ts encode rewrite_query cho docs_embedding.text_vector và image_embedding.caption_vector"
+    ]
+  },
+  "flow_steps": [
+    {
+      "step": 1,
+      "name": "User Text + Image",
+      "description": "Nhận message và image từ frontend"
+    },
+    {
+      "step": 2,
+      "name": "Input Router",
+      "description": "Phân loại image_text"
+    },
+    {
+      "step": 3,
+      "name": "Load Conversation Context",
+      "description": "Lấy context theo session_id"
+    },
+    {
+      "step": 4,
+      "name": "Image Understanding",
+      "description": "Encode ảnh bằng SigLIP, search image_embedding.image_vector để lấy image_place_id"
+    },
+    {
+      "step": 5,
+      "name": "LLM Text Understanding",
+      "description": "Hiểu câu hỏi text, detect intent, detect reference question, detect explicit place"
+    },
+    {
+      "step": 6,
+      "name": "Rewrite Query + Need Flags",
+      "description": "Dựa vào image_place_id và text understanding để rewrite query và sinh need flags"
+    },
+    {
+      "step": 7,
+      "name": "Reference Question Branch",
+      "description": "Nếu text hỏi tham chiếu như 'ở đây/chỗ này', final_place_id=image_place_id"
+    },
+    {
+      "step": 8,
+      "name": "Specific Place Branch",
+      "description": "Nếu text nêu địa điểm cụ thể, so sánh text_place_id với image_place_id"
+    },
+    {
+      "step": 9,
+      "name": "Same Place Handling",
+      "description": "Nếu trùng, final_place_id=image_place_id và filter docs theo final_place_id"
+    },
+    {
+      "step": 10,
+      "name": "Conflict Handling",
+      "description": "Nếu không trùng, search docs theo text_place_id, giữ image_place_id làm ngữ cảnh ảnh, đưa cả hai vào LLM để trả lời/giải thích"
+    },
+    {
+      "step": 11,
+      "name": "Retrieval Planner",
+      "description": "Dùng rewrite_query + need_flags + final_place_id/text_place_id/image_place_id"
+    },
+    {
+      "step": 12,
+      "name": "Docs Retrieval",
+      "description": "Search docs_embedding.text_vector theo final_place_id hoặc text_place_id"
+    },
+    {
+      "step": 13,
+      "name": "Hybrid Images Retrieval",
+      "description": "Nếu need_images=true, dùng rewrite_query để search 2 nhánh trong image_embedding: SigLIP text→image_vector và BGE-M3 text→caption_vector; filter theo final_place_id nếu có rồi gộp điểm"
+    },
+    {
+      "step": 14,
+      "name": "Metadata Retrieval",
+      "description": "Nếu need_metadata=true, get location_info"
+    },
+    {
+      "step": 15,
+      "name": "Result Fusion",
+      "description": "Gom docs + images + metadata + thông tin conflict nếu có"
+    },
+    {
+      "step": 16,
+      "name": "LLM Answer Generator",
+      "description": "Trả lời dựa trên dữ liệu đã truy xuất và câu hỏi rewrite"
+    },
+    {
+      "step": 17,
+      "name": "Response to User",
+      "description": "Trả ApiResponse cho FE"
+    },
+    {
+      "step": 18,
+      "name": "Update Conversation Context",
+      "description": "Update old_input, old_rewrite_query, active_place, last_image_place_id, last_text_place_id, last_conflict khi status=ok"
+    }
+  ],
+  "structured_output": {
+    "rewrite_query": "string",
+    "need_docs": "boolean",
+    "need_images": "boolean",
+    "need_metadata": "boolean",
+    "image_place_id": "string | null",
+    "text_place_id": "string | null",
+    "final_place_id": "string | null",
+    "intent": "overview | activity | image_search | metadata | compare | unknown",
+    "is_reference_question": "boolean",
+    "has_place_conflict": "boolean",
+    "conflict_reason": "string | null"
+  },
+  "branching_rules": {
+    "reference_question": {
+      "condition": "Text là câu hỏi tham chiếu: ở đây, chỗ này, chỗ trong ảnh, có gì chơi, đẹp không",
+      "action": "final_place_id = image_place_id; rewrite_query gắn tên địa điểm từ ảnh"
+    },
+    "specific_place_same_as_image": {
+      "condition": "text_place_id == image_place_id",
+      "action": "final_place_id = image_place_id; retrieval theo final_place_id"
+    },
+    "specific_place_conflict": {
+      "condition": "text_place_id != null && image_place_id != null && text_place_id != image_place_id",
+      "action": "Ưu tiên text_place_id cho docs nếu câu hỏi hỏi rõ địa điểm text; giữ image_place_id làm ngữ cảnh ảnh; set has_place_conflict=true"
+    },
+    "no_text_place": {
+      "condition": "Text không nêu địa điểm rõ ràng",
+      "action": "final_place_id = image_place_id"
+    }
+  },
+  "retrieval_rules": {
+    "need_docs": "search docs_embedding.text_vector theo final_place_id nếu có; nếu conflict thì có thể search theo text_place_id",
+    "need_images": {
+      "strategy": "hybrid_search_images_by_text",
+      "collection": "image_embedding",
+      "no_caption_collection": true,
+      "filter_location": "final_place_id",
+      "branch_1": "SigLIP text encoder tạo siglip_text_vector, search vector name image_vector",
+      "branch_2": "BGE-M3 tạo bge_text_vector, search vector name caption_vector",
+      "merge": "gộp theo image_id hoặc path",
+      "score_formula": "final_score = siglip_score * 0.5 + caption_score * 0.5",
+      "output_fields": [
+        "image_id",
+        "path",
+        "caption",
+        "location_id",
+        "location_name",
+        "final_score",
+        "siglip_score",
+        "caption_score",
+        "sources",
+        "rank"
+      ]
+    },
+    "need_metadata": "get location_info theo final_place_id; nếu conflict thì có thể lấy cả image_place_id và text_place_id",
+    "image_context": "matched image_id/image_place_id luôn được đưa vào debug/context"
+  },
+  "success_acceptance_examples": [
+    {
+      "input": "Ảnh Kỳ Co + 'Ở đây có gì chơi?'",
+      "expected": "final_place_id=ky_co, rewrite_query=Kỳ Co có gì chơi?, status=ok"
+    },
+    {
+      "input": "Ảnh Quy Hòa + 'Eo Gió có gì?'",
+      "expected": "image_place_id=quy_hoa, text_place_id=eo_gio, has_place_conflict=true, docs search theo eo_gio"
+    },
+    {
+      "input": "Ảnh Quy Hòa + 'Cho tôi xem thêm ảnh chỗ này'",
+      "expected": "need_images=true, final_place_id=quy_hoa, gọi hybridSearchImagesByText với filter final_place_id, search cả image_vector và caption_vector trong image_embedding"
+    }
+  ],
+  "errors": [
+    "IMAGE_NOT_TRAVEL_RELATED",
+    "LOW_CONFIDENCE_MATCH",
+    "TEXT_NOT_TRAVEL_RELATED",
+    "QDRANT_SEARCH_ERROR",
+    "LLM_CLASSIFICATION_ERROR",
+    "INTERNAL_SERVER_ERROR"
+  ]
+}
