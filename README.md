@@ -67,8 +67,10 @@ Dữ liệu văn bản (`.docx`) và hình ảnh được chuẩn hóa, vector h
 
 ### 2. Cơ chế Truy Xuất Tài Liệu & Hybrid Image Search
 - **Truy xuất tài liệu (Docs Retrieval)**: Tìm kiếm semantic chunks kết hợp filter theo `location_id`.
-- **Tìm kiếm ảnh đa nhánh (Hybrid Image Search)**: Gộp điểm giữa SigLIP text-to-image và BGE-M3 caption embedding:
-  $$\text{final\_score} = \text{siglip\_score} \times 0.5 + \text{caption\_score} \times 0.5$$
+- **Tìm kiếm ảnh đa nhánh (Hybrid Image Search)**: Gộp điểm giữa SigLIP text-to-image và BGE-M3 caption embedding theo công thức:
+  ```text
+  final_score = (siglip_score * 0.5) + (caption_score * 0.5)
+  ```
 
 | Kiến trúc Tìm Kiếm Tài Liệu | Kiến trúc Hybrid Image Search |
 | :---: | :---: |
