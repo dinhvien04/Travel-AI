@@ -1,29 +1,7 @@
-﻿# TRƯỜNG ĐẠI HỌC QUY NHƠN
+﻿# BÁO CÁO DỰ ÁN HỆ THỐNG TRAVEL AI ASSISTANT
 
-KHOA CÔNG NGHỆ THÔNG TIN
-
-# BÁO CÁO KẾT QUẢ THỰC TẬP TỐT NGHIỆP
-
-# XÂY DỰNG HỆ THỐNG XỬ LÝ BATCH + STREAMING BẰNG CDC VÀ LAKEHOUSE ARCHITECTURE
-
-Sinh viên thực hiện:     Hồ Quyết Thắng
-
-MSV:                            4551050199
-
-Lớp:                              Công nghệ thông tin 45D
-
-Ngành:                          Công nghệ thông tin
-
-Cơ sở thực tập:             TMA Solutions Bình Định
-
-Địa chỉ:                         12 Đại lộ Khoa học, P. Quy Nhơn Nam, Gia Lai
-
-Người hướng dẫn:         Nguyễn Hoàng Vũ Thân
-
-Giảng viên hướng dẫn: TS. Lê Quang Hùng
-
-GIA LAI, 2026
-
+> **Hệ thống Trợ lý Du lịch Đa phương thức (Multimodal RAG)**
+> Hỗ trợ hỏi đáp thông tin du lịch bằng Văn bản và Hình ảnh kết hợp Vector Database (Qdrant), Embedding (BGE-M3, SigLIP) và LLM (Gemini).
 
 ## CHƯƠNG 4: PHÂN TÍCH VÀ THIẾT KẾ HỆ THỐNG
 
